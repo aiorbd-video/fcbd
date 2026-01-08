@@ -1,17 +1,29 @@
 export async function onRequest({ request }) {
-  const ALLOWED_DOMAIN = "https://bd71.vercel.app";
+  const ua = request.headers.get("user-agent") || "";
+  const referer = request.headers.get("referer") || "";
 
-  const origin = request.headers.get("Origin");
-  const referer = request.headers.get("Referer");
+  // 🌐 Detect browser
+  const isBrowser =
+    /Chrome|Firefox|Safari|Edg|OPR|MSIE/i.test(ua);
 
-  // 🔒 Allow only from bd71.vercel.app
+  // 📱 Detect IPTV / media apps
+  const isIPTV =
+    /IPTV|VLC|OTT|ExoPlayer|TiviMate|PerfectPlayer|Kodi/i.test(ua);
+
+  // 🔒 Allow only your website
+  const isYourSite = referer.includes("bd71.vercel.app");
+
+  // ❌ Block rules
   if (
-    !(
-      (origin && origin.startsWith(ALLOWED_DOMAIN)) ||
-      (referer && referer.startsWith(ALLOWED_DOMAIN))
-    )
+    (isBrowser && !isYourSite) || // browser but not your site
+    (!isBrowser && !isIPTV)       // not browser & not IPTV app
   ) {
-    return new Response("403 Forbidden", { status: 403 });
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: "https://t.me/allonebd",
+      },
+    });
   }
 
   const SOURCE =
@@ -19,43 +31,18 @@ export async function onRequest({ request }) {
 
   const res = await fetch(SOURCE, {
     headers: {
-      "User-Agent": "Mozilla/5.0",
+      "User-Agent": ua,
     },
   });
 
-  if (!res.ok) {
-    return new Response("Source fetch failed", { status: 502 });
-  }
-
   const text = await res.text();
-  const lines = text.split("\n");
 
-  let output = [];
-
-  for (let line of lines) {
-    line = line.trim();
-
-    // ❌ Remove only these two
-    if (
-      line.startsWith("#EXTVLCOPT:http-user-agent") ||
-      line.startsWith("#EXTHTTP:")
-    ) {
-      continue;
-    }
-
-    // ✅ Keep everything else
-    output.push(line);
-  }
-
-  return new Response(output.join("\n"), {
+  return new Response(text, {
     headers: {
-      // Allow only bd71.vercel.app in browser
-      "Access-Control-Allow-Origin": ALLOWED_DOMAIN,
-
-      // Browser shows text
       "Content-Type": "text/plain; charset=utf-8",
       "Content-Disposition": 'inline; filename="playlist.m3u"',
       "Cache-Control": "no-store",
+      "Access-Control-Allow-Origin": "*",
     },
   });
 }
